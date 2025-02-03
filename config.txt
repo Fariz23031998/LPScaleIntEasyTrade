@@ -6,7 +6,6 @@
     "price_type": 1,
     "check_time": 10,
     "divider": 1,
-    "use_piece": True,
     "weight_prefix": 22,
     "piece_prefix": 23,
     "barcode_type": 97,

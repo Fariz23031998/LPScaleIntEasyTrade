@@ -1,0 +1,36 @@
+{
+    "host": "localhost",
+    "database": "easytrade_db",
+    "user": "easytrade",
+    "password": "masterkey",
+    "price_type": 1,
+    "check_time": 10,
+    "divider": 1,
+    "use_piece": True,
+    "weight_prefix": 22,
+    "piece_prefix": 23,
+    "barcode_type": 97,
+    "weight_label_format": 1,
+    "piece_label_format": 2,
+    "only_selected_group": False,
+    "sale_units": {
+        "piece": 1,
+        "kg": None,
+        "g": None,
+        "100g": None,
+        "500g": None,
+        "chinese_unit1": None,
+        "chinese_unit2": None,
+        '1000g': 2,
+    },
+    "weight_units_lp": {
+        'piece': None, # Set None (piece': None,) if you're not using piece items, set to 0 if you're using it
+        'kg': 1,
+        "g": 2,
+        "100g": 8,
+        "500g": 3,
+        "chinese_unit1": 5,
+        "chinese_unit2": 6,
+        '1000g': 9,
+    }
+}

@@ -34,7 +34,6 @@ database = config["database"]
 user = config["user"]
 password = config["password"]
 divider = config["divider"]
-use_piece = config["use_piece"]
 check_time = config["check_time"]
 weight_prefix = config["weight_prefix"]
 piece_prefix = config["piece_prefix"]
@@ -74,6 +73,8 @@ class UpdateData:
         self.mdb_cursor = None
         self.last_changes = 0
         self.price_type_id = price_type_id
+        self.is_mysql_connected = False
+        self.connect_mysql()
 
         if not os.path.exists(log_file_name):
             with open(log_file_name, 'w', encoding='utf-8') as file:
@@ -92,131 +93,141 @@ class UpdateData:
                 database=database,
             )
         except Error as e:
+            print(f"Can't connect to the MySQL. {e}. Line: {get_line_number()}")
             write_log_file(f"Can't connect to the MySQL. {e} {self.get_date()}", get_line_number())
+            self.is_mysql_connected = False
             return False
         else:
+            self.is_mysql_connected = True
             return True
 
     def check_mysql_changes(self):
-        mysql_cursor = self.mysql_conn.cursor()
-        mysql_cursor.execute("RESET QUERY CACHE")
-        query_check_item = """
-        SELECT gd_last_update FROM easytrade_db.dir_goods
-        ORDER BY gd_last_update DESC
-        LIMIT 1
-        """
-        mysql_cursor.execute(query_check_item)
-        last_changed_item = mysql_cursor.fetchone()
+        try:
+            mysql_cursor = self.mysql_conn.cursor()
+            mysql_cursor.execute("RESET QUERY CACHE")
+            query_check_item = """
+            SELECT gd_last_update FROM easytrade_db.dir_goods
+            ORDER BY gd_last_update DESC
+            LIMIT 1
+            """
+            mysql_cursor.execute(query_check_item)
+            last_changed_item = mysql_cursor.fetchone()
 
-        query_check_price = """
-        SELECT prc_last_update FROM easytrade_db.dir_prices
-        ORDER BY prc_last_update DESC
-        LIMIT 1
-        """
+            query_check_price = """
+            SELECT prc_last_update FROM easytrade_db.dir_prices
+            ORDER BY prc_last_update DESC
+            LIMIT 1
+            """
 
-        mysql_cursor.execute(query_check_price)
-        last_changed_price = mysql_cursor.fetchone()
+            mysql_cursor.execute(query_check_price)
+            last_changed_price = mysql_cursor.fetchone()
 
-        last_operation = last_changed_price if last_changed_price > last_changed_item else last_changed_item
+            last_operation = last_changed_price if last_changed_price > last_changed_item else last_changed_item
 
-        timestamp_last_operation = last_operation[0].timestamp()
+            timestamp_last_operation = last_operation[0].timestamp()
 
-        if self.last_changes < timestamp_last_operation:
-            self.last_changes = timestamp_last_operation
-            mysql_cursor.close()
-            return True
-        else:
-            mysql_cursor.close()
-            return False
+            if self.last_changes < timestamp_last_operation:
+                self.last_changes = timestamp_last_operation
+                mysql_cursor.close()
+                return True
+            else:
+                mysql_cursor.close()
+                return False
+        except Error as e:
+            print(f"Line: {get_line_number()}, Can't connect to the MySQL. {e} {get_date()}")
+            write_log_file(f"Can't connect to the MySQL. {e}", get_line_number())
+            self.connect_mysql()
 
     def update_items(self):
-        mysql_cursor = self.mysql_conn.cursor()
-        mysql_cursor.execute("RESET QUERY CACHE")
+        try:
+            mysql_cursor = self.mysql_conn.cursor()
+            mysql_cursor.execute("RESET QUERY CACHE")
 
-        if only_selected_group:
-            mysql_query = """
-                SELECT  
-                    G.gd_code, 
-                    G.gd_name, 
-                    G.gd_unit,  
-                    P.prc_value
-                FROM easytrade_db.dir_goods G
-                    LEFT JOIN easytrade_db.dir_prices P ON G.gd_id = P.prc_good
-                    LEFT JOIN easytrade_db.dir_groups GR ON G.gd_group = GR.grp_id
-                WHERE 
-                    G.gd_deleted_mark = 0 
-                    AND G.gd_deleted = 0 
-                    AND P.prc_type = %s
-                    AND P.prc_value > 0
-                    AND GR.grp_name LIKE '%#456%'
-                ORDER BY G.gd_code
-            """
-        else:
-            mysql_query = """
-                SELECT  
-                    G.gd_code, 
-                    G.gd_name, 
-                    G.gd_unit,  
-                    P.prc_value
-                FROM easytrade_db.dir_goods G
-                    LEFT JOIN easytrade_db.dir_prices P ON G.gd_id = P.prc_good
-                WHERE 
-                    G.gd_deleted_mark = 0 
-                    AND G.gd_deleted = 0 
-                    AND P.prc_type = %s
-                    AND P.prc_value > 0
-                ORDER BY G.gd_code
-            """
+            if only_selected_group:
+                mysql_query = """
+                    SELECT  
+                        G.gd_code, 
+                        G.gd_name, 
+                        G.gd_unit,  
+                        P.prc_value
+                    FROM easytrade_db.dir_goods G
+                        LEFT JOIN easytrade_db.dir_prices P ON G.gd_id = P.prc_good
+                        LEFT JOIN easytrade_db.dir_groups GR ON G.gd_group = GR.grp_id
+                    WHERE 
+                        G.gd_deleted_mark = 0 
+                        AND G.gd_deleted = 0 
+                        AND P.prc_type = %s
+                        AND P.prc_value > 0
+                        AND GR.grp_name LIKE '%#456%'
+                    ORDER BY G.gd_code
+                """
+            else:
+                mysql_query = """
+                    SELECT  
+                        G.gd_code, 
+                        G.gd_name, 
+                        G.gd_unit,  
+                        P.prc_value
+                    FROM easytrade_db.dir_goods G
+                        LEFT JOIN easytrade_db.dir_prices P ON G.gd_id = P.prc_good
+                    WHERE 
+                        G.gd_deleted_mark = 0 
+                        AND G.gd_deleted = 0 
+                        AND P.prc_type = %s
+                        AND P.prc_value > 0
+                    ORDER BY G.gd_code
+                """
 
-        mysql_cursor.execute(mysql_query, (self.price_type_id, ))
-        items = mysql_cursor.fetchall()
-        items_list = []
-        for item in items:
-            unit_info_tuple = get_unit_type_from_id(item[2])
-            if unit_info_tuple:
-                unit_id = unit_info_tuple[0]
-                unit_prefix = unit_info_tuple[1]
-                unit_label_format = unit_info_tuple[2]
-                item_list = [
-                    item[0],
-                    item[1],
-                    f'{unit_prefix}{item[0]}',
-                    barcode_type,
-                    unit_label_format,
-                    item[3] / divider,
-                    unit_id,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0
-                ]
-                items_list.append(item_list)
-                print(item_list)
+            mysql_cursor.execute(mysql_query, (self.price_type_id, ))
+            items = mysql_cursor.fetchall()
+            items_list = []
+            for item in items:
+                unit_info_tuple = get_unit_type_from_id(item[2])
+                if unit_info_tuple:
+                    unit_id = unit_info_tuple[0]
+                    unit_prefix = unit_info_tuple[1]
+                    unit_label_format = unit_info_tuple[2]
+                    item_list = [
+                        item[0],
+                        item[1],
+                        f'{unit_prefix}{item[0]}',
+                        barcode_type,
+                        unit_label_format,
+                        item[3] / divider,
+                        unit_id,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0
+                    ]
+                    items_list.append(item_list)
 
-        write_to_csv(items_list, filename='products.csv')
+            write_to_csv(items_list, filename='products.csv')
+        except Error as e:
+            print(f"Line: {get_line_number()}, Can't connect to the MySQL. {e} {get_date()}")
+            write_log_file(f"Can't connect to the MySQL. {e}", get_line_number())
+            self.connect_mysql()
 
 
 update_data = UpdateData()
-mysql_connection = update_data.connect_mysql()
 
 
 while True:
-    if mysql_connection:
+    if update_data.is_mysql_connected:
         is_changed = update_data.check_mysql_changes()
-        # print(is_changed)
-        write_log_file(f"Change status: {is_changed}", get_line_number())
+
         if is_changed:
             update_data.update_items()
-            # print("changed")
+            print("changed")
             write_log_file("changed", get_line_number())
     else:
-        mysql_connection = update_data.connect_mysql()
+        update_data.connect_mysql()
 
     time.sleep(check_time)
 
